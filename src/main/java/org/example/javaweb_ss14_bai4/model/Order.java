@@ -1,6 +1,6 @@
-package org.example.javaweb_ss14_bai4.entity;
+package org.example.javaweb_ss14_bai4.model;
 
-import org.example.javaweb_ss14_bai4.entity.enums.OrderStatus;
+import org.example.javaweb_ss14_bai4.model.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -21,6 +21,12 @@ public class Order {
 
     @Column(nullable = false)
     private Long customerId;
+
+    @Column(nullable = false)
+    private Long productId;
+
+    @Column(nullable = false)
+    private Integer quantity;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

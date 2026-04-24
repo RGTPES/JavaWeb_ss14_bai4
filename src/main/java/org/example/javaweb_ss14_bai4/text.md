@@ -1,217 +1,167 @@
-# PHẦN 1 - PHÂN TÍCH & ĐỀ XUẤT
+# He thong Quan ly Gio hang tam va Dong bo Kho
 
-## 1. Phân tích I/O
+## Phan 1: Phan tich va De xuat giai phap
 
-### 1.1. Input
-Hệ thống nhận các dữ liệu đầu vào sau:
+## 1. Phan tich bai toan I/O
 
-- `productId`: mã sản phẩm
-- `customerId`: mã khách hàng
-- `quantity`: số lượng khách muốn mua
-- `checkoutTime`: thời điểm bắt đầu checkout
-- `paymentStatus`: trạng thái thanh toán (`SUCCESS`, `FAILED`, `PENDING`, `CANCELLED`)
-- `orderStatus`: trạng thái đơn hàng (`PENDING`, `PAID`, `EXPIRED`, `CANCELLED`)
-- `reserveExpiredAt`: thời điểm hết hạn giữ hàng (checkoutTime + 15 phút)
+### Input
 
-### 1.2. Output mong đợi
+- customerId: ma khach hang
+- productId: ma san pham
+- quantity: so luong san pham muon mua
+- checkoutTime: thoi diem khach hang checkout
+- expiredTime: thoi gian het han giu hang, mac dinh la 15 phut
 
-#### Trường hợp 1: Thanh toán thành công trong 15 phút
-- Đơn hàng chuyển từ `PENDING` → `PAID`
-- Số lượng giữ tạm được chuyển thành trừ kho vĩnh viễn
-- Không hoàn kho
+### Output
 
-#### Trường hợp 2: Quá 15 phút chưa thanh toán
-- Đơn hàng chuyển từ `PENDING` → `EXPIRED`
-- Số lượng sản phẩm được hoàn lại kho
-- Người khác có thể tiếp tục mua
+Truong hop thanh cong:
 
-#### Trường hợp 3: Khách hàng hủy đơn
-- Đơn hàng chuyển từ `PENDING` → `CANCELLED`
-- Hệ thống hoàn kho ngay
+- Tao don hang tam voi trang thai PENDING
+- Tru so luong san pham khoi stock kha dung
+- Giu hang trong 15 phut
 
-#### Trường hợp 4: Sản phẩm đã bị xóa khỏi danh mục bán
-- Nếu đơn đang giữ hàng mà hết hạn:
-    - Không đưa sản phẩm quay lại trạng thái bán bình thường
-    - Chỉ hoàn lại số lượng vào kho nội bộ nếu hệ thống còn quản lý tồn kho
-    - Nếu sản phẩm bị xóa mềm (`inactive`, `deleted`) thì vẫn có thể cộng lại stock nhưng không hiển thị bán
-    - Nếu xóa cứng khỏi database thì cần log lỗi hoặc bỏ qua hoàn kho và đánh dấu đơn xử lý ngoại lệ
+Truong hop thanh toan thanh cong trong 15 phut:
 
-#### Trường hợp 5: Session người dùng timeout
-- Không phụ thuộc session để hoàn kho
-- Hệ thống vẫn phải dựa vào `orderStatus`, `paymentStatus`, `reserveExpiredAt` trong database để xử lý
+- Cap nhat don hang thanh PAID
+- So luong da giu duoc tru vinh vien khoi kho
+
+Truong hop qua 15 phut hoac khach huy don:
+
+- Cap nhat don hang thanh CANCELLED hoac EXPIRED
+- Hoan lai so luong san pham vao kho
+
+Truong hop loi:
+
+- Neu khong du hang thi bao "Het hang"
+- Neu san pham khong ton tai thi bao "San pham khong ton tai"
+- Neu don hang da het han thi bao "Don hang da het han"
 
 ---
 
-## 2. Phân tích vấn đề
+## 2. Van de can xu ly
 
-Trong bài toán này, hệ thống cần giữ hàng trong 15 phút cho khách khi checkout.  
-Nếu dùng một transaction kéo dài suốt 15 phút để giữ lock trên database thì sẽ gây ra các vấn đề:
+Neu dung Transaction keo dai 15 phut de giu hang thi se gay nguy hiem:
 
-- Giữ lock quá lâu
-- Làm giảm hiệu năng hệ thống
-- Tăng nguy cơ deadlock
-- Nhiều người dùng cùng checkout sẽ gây nghẽn database
-- Không phù hợp với hệ thống E-commerce có lượng truy cập cao
+- Database bi khoa qua lau
+- Tang nguy co deadlock
+- Lam cham he thong
+- Khong phu hop voi he thong E-commerce nhieu nguoi dung
 
-Vì vậy không nên dùng long-running transaction.
+Vi vay, khong nen giu Transaction trong 15 phut.
 
-Giải pháp đúng là:
-- Chỉ dùng transaction ngắn cho từng thao tác nhỏ
-- Trạng thái giữ hàng phải được lưu bằng dữ liệu
-- Việc hoàn kho phải được xử lý bằng cơ chế độc lập với session người dùng
+Cach dung dung la:
 
----
-
-## 3. Đề xuất giải pháp 1
-## Sử dụng Database Transaction + trạng thái đơn hàng tạm thời (PENDING)
-
-### 3.1. Ý tưởng
-Khi khách nhấn Checkout:
-- Mở transaction ngắn
-- Kiểm tra stock hiện tại
-- Trừ tạm stock ngay
-- Tạo đơn hàng với trạng thái `PENDING`
-- Lưu thời điểm hết hạn `reserveExpiredAt = now + 15 phút`
-- Commit transaction ngay
-
-Sau đó:
-- Nếu thanh toán thành công trong thời gian giữ hàng:
-    - Chuyển `PENDING` → `PAID`
-- Nếu quá hạn hoặc hủy:
-    - Chuyển `PENDING` → `EXPIRED` hoặc `CANCELLED`
-    - Hoàn stock lại
-
-### 3.2. Quy trình xử lý
-
-#### Bước 1: Reserve hàng
-- Begin transaction
-- Kiểm tra sản phẩm còn đủ stock không
-- Nếu đủ:
-    - giảm stock
-    - tạo order status = `PENDING`
-    - lưu `reserveExpiredAt`
-- Commit
-
-#### Bước 2: Thanh toán thành công
-- Begin transaction
-- Kiểm tra order còn trạng thái `PENDING` và chưa hết hạn
-- Cập nhật `orderStatus = PAID`
-- Commit
-
-#### Bước 3: Hết hạn hoặc hủy đơn
-- Begin transaction
-- Kiểm tra order còn `PENDING`
-- Cộng lại stock
-- Cập nhật `orderStatus = EXPIRED` hoặc `CANCELLED`
-- Commit
-
-### 3.3. Ưu điểm
-- Dễ hiểu
-- Dễ triển khai
-- Không giữ transaction quá lâu
-- Phù hợp với nguyên tắc ACID cho từng bước xử lý ngắn
-
-### 3.4. Nhược điểm
-- Cần thêm cơ chế khác để quét đơn quá hạn
-- Nếu chỉ tạo `PENDING` mà không có job quét, hàng có thể bị giữ mãi
+- Transaction chi chay ngan trong luc tao don tam
+- Luu trang thai don hang la PENDING
+- Luu thoi gian het han
+- Sau do dung co che quet tu dong de hoan kho neu qua han
 
 ---
 
-## 4. Đề xuất giải pháp 2
-## Sử dụng Scheduled Task hoặc Hibernate Interceptor để quét và hoàn kho
+## 3. Giai phap 1: Database Transaction ket hop trang thai Pending
 
-### 4.1. Ý tưởng
-Thay vì giữ transaction lâu, hệ thống:
-- Lưu đơn hàng `PENDING`
-- Lưu thời điểm hết hạn `reserveExpiredAt`
-- Dùng Scheduled Task chạy định kỳ (ví dụ mỗi 1 phút) để quét các đơn:
-    - `orderStatus = PENDING`
-    - `reserveExpiredAt < now`
-- Sau đó tự động hoàn kho và cập nhật trạng thái đơn
+### Y tuong
 
-Có thể dùng:
-- `@Scheduled` trong Spring
-- Quartz Scheduler
-- Job nền
-- Hoặc Interceptor/Event Listener của Hibernate để hỗ trợ một số điểm lifecycle  
-  Tuy nhiên trong thực tế, **Scheduled Task phù hợp hơn Hibernate Interceptor** cho bài toán quét hết hạn theo thời gian.
+Khi khach checkout:
 
-### 4.2. Quy trình xử lý
+1. Bat dau Transaction
+2. Kiem tra ton kho
+3. Neu du hang thi tru stock tam thoi
+4. Tao order voi status = PENDING
+5. Luu expiredAt = now + 15 phut
+6. Commit Transaction
 
-#### Bước 1: Khi checkout
-- Transaction ngắn
-- Trừ tạm stock
-- Tạo order = `PENDING`
-- Lưu thời gian hết hạn
+Neu khach thanh toan thanh cong:
 
-#### Bước 2: Scheduled Task chạy nền
-- Quét danh sách order:
-    - `status = PENDING`
-    - `reserveExpiredAt <= now`
-- Với từng order:
-    - kiểm tra sản phẩm còn tồn tại không
-    - nếu còn thì cộng stock lại
-    - cập nhật order thành `EXPIRED`
-    - ghi log nếu dữ liệu bất thường
+1. Bat dau Transaction
+2. Kiem tra order con PENDING va chua het han
+3. Cap nhat order thanh PAID
+4. Commit
 
-#### Bước 3: Nếu khách thanh toán trước khi job chạy
-- Thanh toán đổi `PENDING` → `PAID`
-- Job sẽ bỏ qua đơn này vì không còn `PENDING`
+Neu khach huy:
 
-### 4.3. Trường hợp sản phẩm đã bị xóa
-- Nếu xóa mềm:
-    - vẫn có thể hoàn stock vào bản ghi sản phẩm
-    - nhưng không cho hiển thị bán
-- Nếu xóa cứng:
-    - không thể cộng stock trực tiếp
-    - cần ghi log lỗi
-    - đánh dấu đơn thuộc nhóm dữ liệu bất thường để admin xử lý
+1. Bat dau Transaction
+2. Cap nhat order thanh CANCELLED
+3. Hoan stock
+4. Commit
 
-### 4.4. Trường hợp session khách timeout
-- Không ảnh hưởng
-- Job quét dựa trên dữ liệu database, không phụ thuộc session web
+### Uu diem
 
-### 4.5. Ưu điểm
-- Không khóa dữ liệu lâu
-- Phù hợp hệ thống lớn, nhiều người dùng
-- Tự động hóa cao
-- Dễ mở rộng cho nhiều máy chủ nếu dùng scheduler tập trung
+- Don gian, de hieu
+- Dam bao tinh toan ven du lieu
+- Khong giu Transaction qua lau
 
-### 4.6. Nhược điểm
-- Phức tạp hơn giải pháp 1
-- Cần xử lý race condition giữa thanh toán thành công và job hoàn kho
-- Cần thêm log, retry, idempotent để tránh xử lý trùng
+### Nhuoc diem
+
+- Neu khach khong thanh toan va khong bam huy, can co co che khac de hoan kho
+- Can them cot status va expiredAt
 
 ---
 
-## 5. Gợi ý thêm về Isolation Level
+## 4. Giai phap 2: Scheduled Task quet don het han va hoan kho
+
+### Y tuong
+
+He thong tao don tam voi status = PENDING va expiredAt.
+
+Sau do, mot Scheduled Task chay dinh ky, vi du moi 1 phut:
+
+1. Tim cac order co status = PENDING
+2. Dieu kien expiredAt < now
+3. Voi moi order het han:
+  - Bat dau Transaction
+  - Kiem tra product con ton tai
+  - Neu product con ton tai thi cong lai stock
+  - Cap nhat order thanh EXPIRED
+  - Commit
+
+### Xu ly bay du lieu
+
+Neu san pham da bi xoa khoi danh muc:
+
+- Khong nen xoa cung ban ghi product trong database
+- Nen dung soft delete, vi du status = DELETED
+- Van co the tim product de hoan kho
+
+Neu session khach hang timeout:
+
+- Khong phu thuoc vao session
+- Dua vao order.expiredAt trong database
+- Scheduled Task van tu dong hoan kho duoc
+
+### Uu diem
+
+- Phu hop he thong lon
+- Tu dong xu ly don het han
+- Khong phu thuoc vao session nguoi dung
+- Tranh deadlock do khong giu transaction lau
+
+### Nhuoc diem
+
+- Code phuc tap hon
+- Can viet job quet dinh ky
+- Co the co do tre nho, vi du het han 15 phut nhung job chay sau do 1 phut moi xu ly
+
+---
+
+## 5. Giai phap ve Isolation Level
+
+Co the can nhac:
 
 ### Read Committed
-- Giảm lock
-- Hiệu năng tốt hơn
-- Phù hợp hệ thống có nhiều giao dịch
-- Nhưng phải kiểm soát logic cập nhật cẩn thận
+
+- Chi doc du lieu da commit
+- Toc do nhanh
+- Phu hop he thong co nhieu truy cap
+- Can ket hop locking de tranh ban lo
 
 ### Repeatable Read
-- An toàn hơn khi đọc lặp lại trong transaction
-- Nhưng dễ tăng lock và giảm hiệu năng hơn
 
-### Kết luận về isolation
-Trong thương mại điện tử tải cao:
-- Thường ưu tiên `Read Committed`
-- Kết hợp transaction ngắn + kiểm tra điều kiện cập nhật rõ ràng
-- Chỉ dùng mức cô lập cao hơn khi thực sự cần
+- Dam bao du lieu doc trong transaction khong thay doi
+- An toan hon Read Committed
+- Co the lam tang lock va giam hieu nang
 
----
+Trong bai toan nay, nen uu tien:
 
-## 6. Kết luận phần 1
-
-Không nên dùng long-running transaction để giữ hàng 15 phút vì sẽ gây nghẽn và deadlock.
-
-Hai hướng hợp lý là:
-1. Dùng transaction ngắn + trạng thái `PENDING`
-2. Dùng transaction ngắn + Scheduled Task để quét đơn hết hạn và hoàn kho
-
-Trong đó:
-- `PENDING` là trạng thái bắt buộc gần như phải có
-- Scheduled Task là cơ chế mạnh để tự động giải phóng hàng
+- Read Committed
+- Ket hop Pessimistic Lock hoac Optimistic Lock khi cap nhat stock

@@ -1,4 +1,4 @@
-package org.example.javaweb_ss14_bai4.entity;
+package org.example.javaweb_ss14_bai4.model;
 
 import jakarta.persistence.*;
 import lombok.*;

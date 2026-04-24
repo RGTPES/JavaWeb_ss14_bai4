@@ -1,8 +1,7 @@
 package org.example.javaweb_ss14_bai4.controller;
 
-import org.example.javaweb_ss14_bai4.entity.Order;
-import org.example.javaweb_ss14_bai4.service.CheckoutService;
 import lombok.RequiredArgsConstructor;
+import org.example.javaweb_ss14_bai4.service.CartReserveService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -10,25 +9,22 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class CheckoutController {
 
-    private final CheckoutService checkoutService;
+    private final CartReserveService checkoutService;
 
     @PostMapping("/reserve")
     public String reserve(@RequestParam Long customerId,
                           @RequestParam Long productId,
                           @RequestParam Integer quantity) {
-        Order order = checkoutService.checkout(customerId, productId, quantity);
-        return "Reserve thành công. Order ID = " + order.getId();
+        return checkoutService.checkout(customerId, productId, quantity);
     }
 
     @PostMapping("/pay/{orderId}")
     public String pay(@PathVariable Long orderId) {
-        checkoutService.payOrder(orderId);
-        return "Thanh toán thành công cho order " + orderId;
+        return checkoutService.payOrder(orderId);
     }
 
     @PostMapping("/cancel/{orderId}")
     public String cancel(@PathVariable Long orderId) {
-        checkoutService.cancelOrder(orderId);
-        return "Hủy order thành công: " + orderId;
+        return checkoutService.cancelOrder(orderId);
     }
 }

@@ -1,7 +1,7 @@
 package org.example.javaweb_ss14_bai4.repository;
 
-import  org.example.javaweb_ss14_bai4.entity.StockReservation;
-import  org.example.javaweb_ss14_bai4.entity.enums.ReservationStatus;
+import  org.example.javaweb_ss14_bai4.model.StockReservation;
+import  org.example.javaweb_ss14_bai4.model.enums.ReservationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;

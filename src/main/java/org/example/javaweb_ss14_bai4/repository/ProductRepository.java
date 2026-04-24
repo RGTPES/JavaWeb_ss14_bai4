@@ -1,6 +1,6 @@
 package org.example.javaweb_ss14_bai4.repository;
 
-import org.example.javaweb_ss14_bai4.entity.Product;
+import org.example.javaweb_ss14_bai4.model.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;

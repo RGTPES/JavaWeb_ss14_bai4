@@ -1,7 +1,7 @@
-package org.example.javaweb_ss14_bai4.entity;
+package org.example.javaweb_ss14_bai4.model;
 
 
-import org.example.javaweb_ss14_bai4.entity.enums.ReservationStatus;
+import org.example.javaweb_ss14_bai4.model.enums.ReservationStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
