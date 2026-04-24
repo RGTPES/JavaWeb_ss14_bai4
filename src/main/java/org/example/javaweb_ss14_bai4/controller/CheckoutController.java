@@ -1,7 +1,7 @@
 package org.example.javaweb_ss14_bai4.controller;
 
 import org.example.javaweb_ss14_bai4.entity.Order;
-import org.example.javaweb_ss14_bai4.CheckoutService;
+import org.example.javaweb_ss14_bai4.service.CheckoutService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
